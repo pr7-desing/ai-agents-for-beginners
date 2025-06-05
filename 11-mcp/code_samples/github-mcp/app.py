@@ -29,21 +29,14 @@ from azure.search.documents import SearchClient
 from azure.search.documents.indexes import SearchIndexClient
 from azure.search.documents.indexes.models import SearchIndex, SimpleField, SearchFieldDataType, SearchableField
 
-
-# Load environment variables
 load_dotenv()
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-
-# Example Weather Plugin (Tool)
-
-        
 
 class RAGPlugin:
     def __init__(self, search_client):
@@ -60,7 +53,6 @@ class RAGPlugin:
                     context_strings.append(f"Event: {result['content']}")
         except Exception as e:
             context_strings.append(f"Error searching Azure Search: {str(e)}")
-        # Live API (example: Devpost hackathons)
         try:
             api_resp = requests.get(f"https://devpost.com/api/hackathons?search={query}", timeout=5)
             if api_resp.ok:
@@ -74,8 +66,6 @@ class RAGPlugin:
         else:
             return "No relevant events found."
 
-
-# Initialize Azure AI Search with persistent storage
 search_service_endpoint = os.getenv("AZURE_SEARCH_SERVICE_ENDPOINT")
 search_api_key = os.getenv("AZURE_SEARCH_API_KEY")
 index_name = "event-descriptions"
@@ -91,7 +81,6 @@ index_client = SearchIndexClient(
     credential=AzureKeyCredential(search_api_key)
 )
 
-# Define the index schema
 fields = [
     SimpleField(name="id", type=SearchFieldDataType.String, key=True),
     SearchableField(name="content", type=SearchFieldDataType.String)
@@ -99,16 +88,13 @@ fields = [
 
 index = SearchIndex(name=index_name, fields=fields)
 
-# Check if index already exists if not, create it
 try:
     existing_index = index_client.get_index(index_name)
     print(f"Index '{index_name}' already exists, using the existing index.")
 except Exception as e:
-    # Create the index if it doesn't exist
     print(f"Creating new index '{index_name}'...")
     index_client.create_index(index)
 
-# Always read event descriptions from markdown file
 current_dir = os.path.dirname(os.path.abspath(__file__))
 event_descriptions_path = os.path.join(current_dir, "event-descriptions.md")
 
@@ -119,26 +105,23 @@ except FileNotFoundError:
     logger.warning(f"Could not find {event_descriptions_path}")
     markdown_content = ""
 
-# Split the markdown content into individual event descriptions
-event_descriptions = markdown_content.split("---")  # You can change the delimiter
+event_descriptions = markdown_content.split("---")  
 
-# Create documents for Azure Search
 documents = []
 for i, description in enumerate(event_descriptions):
-    description = description.strip()  # Remove leading/trailing whitespace
-    if description:  # Avoid empty descriptions
+    description = description.strip()  
+    if description:  
         documents.append({"id": str(i + 1), "content": description})
 
-# Add documents to the index (only if we have documents)
+
 if documents:
-    # Delete existing documents first to avoid duplicates
     try:
         search_client.delete_documents(documents=[{"id": doc["id"]} for doc in documents])
         print("Cleared existing documents")
     except Exception as e:
         print(f"Warning: Failed to clear existing documents: {str(e)}")
     
-    # Upload new documents
+
     search_client.upload_documents(documents)
     print(f"Uploaded {len(documents)} documents to index")
 
@@ -160,7 +143,7 @@ async def on_mcp(connection, session: ClientSession):
     mcp_tools[connection.name] = tools
     cl.user_session.set("mcp_tools", mcp_tools)
     
-    # Log available tools
+
     print(f"Available MCP tools for {connection.name}:")
     for tool in tools:
         print(f"  - {tool['name']}: {tool['description']}")
@@ -173,7 +156,7 @@ async def call_tool(tool_use):
     current_step = cl.context.current_step
     current_step.name = tool_name
 
-    # Identify which mcp is used
+
     mcp_tools = cl.user_session.get("mcp_tools", {})
     mcp_name = None
 
@@ -205,18 +188,13 @@ async def call_tool(tool_use):
 @cl.on_chat_start
 async def on_chat_start():
  
-    # Create kernel
+
     kernel = Kernel()
 
-    # Define service ID
+
     service_id = "agent"
 
-    # Create and add chat completion service
-    # chat_completion_service = OpenAIChatCompletion(
-    #     ai_model_id="gpt-4o-mini",
-    #     async_client=client,
-    #     service_id=service_id
-    # )
+
 
     sk_filter = cl.SemanticKernelFilter(kernel=kernel)
 
@@ -227,16 +205,14 @@ async def on_chat_start():
 
  
 
-    # Create a properly instantiated RAGPlugin
+
     rag_plugin = RAGPlugin(search_client)
 
-    # Add to kernel
     kernel.add_plugin(rag_plugin, plugin_name="RAG")
 
-    # Store in session
     cl.user_session.set("rag_plugin", rag_plugin)
 
-    # Add GitHub MCP plugin
+
     try:
         logger.info("Initializing GitHub MCP plugin...")
         github_plugin = MCPStdioPlugin(
@@ -246,15 +222,15 @@ async def on_chat_start():
             args=["-y", "@modelcontextprotocol/server-github"]
         )
 
-        # Connect to the GitHub MCP server
+
         await github_plugin.connect()
         logger.info("GitHub MCP server connection established")
 
-        # Add the plugin to the kernel
+
         kernel.add_plugin(github_plugin)
         logger.info("GitHub plugin added to kernel")
 
-        # Store the plugin in user session for cleanup later
+
         cl.user_session.set("github_plugin", github_plugin)
 
         logger.info("GitHub plugin setup completed successfully")
@@ -357,10 +333,10 @@ If no relevant events are found, acknowledge this and suggest trying different s
         service=AzureChatCompletion(),
         name="EventsAgent",
         instructions=EVENTS_AGENT,
-        plugins=[rag_plugin]  # Add the plugin here
+        plugins=[rag_plugin]  
     )
 
-    # Create the agent group chat
+
     agent_group_chat = AgentGroupChat(
         agents=[github_agent, hackathon_agent, events_agent],
         selection_strategy=SequentialSelectionStrategy(
@@ -368,23 +344,21 @@ If no relevant events are found, acknowledge this and suggest trying different s
         termination_strategy=DefaultTerminationStrategy(maximum_iterations=3)
     )
 
-    # Create a new chat history
     chat_history = ChatHistory()
 
-    # Store in user session
+
     cl.user_session.set("kernel", kernel)
-    cl.user_session.set("settings", settings)  # Store settings in session
+    cl.user_session.set("settings", settings)  
     cl.user_session.set("chat_completion_service", AzureChatCompletion())
     cl.user_session.set("chat_history", chat_history)
     cl.user_session.set("mcp_tools", {})
-    # Store the agent group chat
     cl.user_session.set("agent_group_chat", agent_group_chat)
 
 
-# Add a cleanup handler for when the session ends
+
 @cl.on_chat_end
 async def on_chat_end():
-    # Get the GitHub plugin if it exists
+
     github_plugin = cl.user_session.get("github_plugin")
     if github_plugin:
         try:
@@ -400,7 +374,7 @@ def route_user_input(user_input: str):
     """
     user_input_lower = user_input.lower()
     agents = []
-    # Example patterns (expand as needed)
+
     if re.search(r"github|repo|repository|commit|pull request", user_input_lower):
         agents.append("GitHubAgent")
     if re.search(r"hackathon|project idea|competition|challenge|win", user_input_lower):
@@ -424,10 +398,10 @@ async def on_message(message: cl.Message):
     user_input = message.content
     agent_names = route_user_input(user_input)
 
-    # Add user message to chat history
+    
     chat_history.add_user_message(message.content)
 
-    # If more than one agent is selected, use group chat
+    
     if len(agent_names) > 1:
         await agent_group_chat.add_chat_message(message.content)
         answer = cl.Message(content="Processing your request using: {}...\n\n".format(", ".join(agent_names)))
@@ -449,7 +423,7 @@ async def on_message(message: cl.Message):
             answer.content += f"\n\n❌ Error: {str(e)}"
             await answer.update()
     else:
-        # Single agent: route to the appropriate agent
+        
         agent_name = agent_names[0]
         answer = cl.Message(content=f"Processing your request using {agent_name}...\n\n")
         await answer.send()
